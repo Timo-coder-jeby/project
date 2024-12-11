@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://unpkg.com/element-plus"></script>
+  <script src="//unpkg.com/@element-plus/icons-vue"></script>
+  <title>面试</title>
+  <style rel="stylesheet">
+    *{
+      margin: 0;
+      padding: 0;
+    }
+    body,#app{
+      width: 100vw;
+      height: 100vh;
+    }
+    div,span{
+      font-size: 14px;
+    }
+    ul{
+      list-style-type: none;
+      color: #333;
+    }
+    li{
+      cursor: pointer;
+    }
+    li.active{
+      color: var(--el-color-primary);
+    }
+    li span{
+      color: var(--el-color-primary);
+    }
+    .form{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .form .el-input{
+      width: 200px;
+    }
+    .search-item{
+      display: flex;
+      align-items: center;
+    }
+    .search-item .label{
+      flex-shrink: 0;
+      margin-right: 15px;
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <el-card>
+    <template #header>
+      <div>订单管理</div>
+    </template>
+    <div class="form">
+      <el-input clearable v-model.trim="sc" placeholder="搜索" size="small" @change="searchVal" @clear="searchVal"></el-input>
+      <div>
+        <el-button type="primary" size="small" @click="editTable('编辑表格')">编辑表格</el-button>
+        <el-button type="primary" size="small" @click="editTable('筛选')">筛选</el-button>
+      </div>
+    </div>
+    <el-table :data="tbD">
+      <template v-for="(col,i) in tbH">
+        <el-table-column
+          :key="col.id"
+          :prop="col.prop"
+          :label="col.label"
+          :sortable="col.sortable"
+          v-if="col.visible"
+        >
+          <template #default="{ row, column, $index }">
+            <div v-if="col.prop === 'no'">{{ $index + 1 }}</div>
+            <div v-else>{{row[col.prop]}}</div>
+          </template>
+        </el-table-column>
+      </template>
+    </el-table>
+  </el-card>
+  <el-drawer
+    v-model="isShowEditDl"
+    destroy-on-close
+    :title="draTitle"
+    modal
+    width="30%"
+    center
+  >
+    <div v-if="draTitle === '编辑表格'">
+      <div style="font-size: 15px;margin-bottom: 15px">已存储的表格方案</div>
+      <ul>
+        <li
+          v-for="(l,n) in tableH"
+          :key="l.id"
+          :class="{active: n === curTableIndex}"
+          @click="changeTb(n)"
+        >{{ n + 1 }}. {{l.name}} <span @click="delTb(n)">删除</span></li>
+      </ul>
+      <el-divider></el-divider>
+      <el-table :data="computeTableH" >
+        <el-table-column
+          v-for="c in editTBH"
+          :key="c.prop"
+          :prop="c.prop"
+          :label="c.label"
+          align="center"
+        >
+          <template #default="{ row, column, $index }">
+            <div v-if="c.prop === 'no'">{{ $index + 1 }}</div>
+            <div v-else-if="c.prop === 'label'">{{ row[c.prop] }}</div>
+            <div v-else style="cursor:pointer;">
+              <el-icon v-if="$index !== 0" @click="operate(1,row,$index + 1)"><Upload /></el-icon>
+              <el-icon v-if="$index < tableH[curTableIndex]['tb'].length - 2"  @click="operate(0,row,$index + 1)"><Download /></el-icon>
+              <el-icon @click="operate('toggle',row,$index)"><Hide /></el-icon>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+    <div v-else>
+      <div class="search-item">
+        <div class="label">用户类型</div>
+        <el-select v-model="userType" placeholder="请选择">
+          <el-option label="初级用户" value="初级用户"></el-option>
+          <el-option label="高级用户" value="高级用户"></el-option>
+        </el-select>
+      </div>
+      <div style="font-size: 12px;margin-top: 30px;color: red">一般筛选走服务端过滤,前端不会去做,为了节省时间所以写一个筛选条件其他的大同小异</div>
+    </div>
+    <template #footer>
+      <el-button size="small" type="primary" @click="saveTb" v-if="draTitle === '编辑表格'">保存当前表格方案</el-button>
+      <template v-else>
+        <el-button size="small" type="primary" @click="search('rest')">重置条件</el-button>
+        <el-button size="small" type="primary" @click="search('search')">筛选</el-button>
+      </template>
+    </template>
+  </el-drawer>
+</div>
+<script>
+  const { createApp, ref,computed } = Vue;
+  createApp({
+    setup() {
+      const isShowEditDl =  ref(false)
+      const isShow =  ref(true)
+      const sc = ref('')
+      const draTitle = ref('筛选')
+      const curTableIndex = ref(0)
+      const tableH = ref([
+        {
+          id: 1,
+          name: '老张看订单',
+          tb:[
+            {
+              id: -1,
+              prop: 'no',
+              label: '序号',
+              visible: true,
+            },
+            {
+              id: 0,
+              prop: 'id',
+              label: '订单ID',
+              visible: true,
+              sortable: true
+            },
+            {
+              id: 1,
+              prop: 'name',
+              label: '商品名称',
+              visible: true,
+              sortable: true
+            },
+            {
+              id: 2,
+              prop: 'price',
+              label: '订单金额',
+              visible: true,
+              sortable: true
+            },
+            {
+              id: 3,
+              prop: 'createTime',
+              label: '订单时间',
+              visible: true,
+              sortable: true
+            },
+            {
+              id: 4,
+              prop: 'paymentTime',
+              label: '支付时间',
+              visible: true,
+              sortable: true
+            },
+            {
+              id: 5,
+              prop: 'user',
+              label: '下单用户',
+              visible: true,
+              sortable: true
+            },
+            {
+              id: 6,
+              prop: 'userType',
+              label: '用户类型',
+              visible: true,
+              sortable: true
+            },
+            {
+              id: 7,
+              prop: 'couponId',
+              label: '优惠券ID',
+              visible: true,
+              sortable: true
+            },
+            {
+              id: 8,
+              prop: 'couponType',
+              label: '优惠券类型',
+              visible: true,
+              sortable: true
+            },
+          ],
+        },
+        {
+          id: 2,
+          name: '老张看物流',
+          tb:[
+            {
+              id: -1,
+              prop: 'no',
+              label: '序号',
+              visible: true,
+            },
+            {
+              id: 0,
+              prop: 'id',
+              label: '订单ID',
+              visible: true,
+              sortable: true
+            },
+            {
+              id: 1,
+              prop: 'name',
+              label: '商品名称',
+              visible: true,
+              sortable: true
+            },
+            {
+              id: 2,
+              prop: 'price',
+              label: '订单金额',
+              visible: true,
+              sortable: true
+            },
+            {
+              id: 3,
+              prop: 'createTime',
+              label: '订单时间',
+              visible: true,
+              sortable: true
+            },
+            {
+              id: 4,
+              prop: 'paymentTime',
+              label: '支付时间',
+              visible: true,
+              sortable: true
+            },
+            {
+              id: 7,
+              prop: 'couponId',
+              label: '优惠券ID',
+              visible: true,
+              sortable: true
+            },
+            {
+              id: 8,
+              prop: 'couponType',
+              label: '优惠券类型',
+              visible: true,
+              sortable: true
+            },
+          ],
+        },
+      ])
+      const tableData = ref([
+        {
+          id: '1212',
+          name: 'xxx羽绒服',
+          userType: '初级用户',
+          price: '599',
+          createTime: '2024-10-10',
+          paymentTime: '20204-10-11',
+          user: '先生',
+          couponId: '479729-1212',
+          couponType: '满减券'
+        },
+        {
+          id: '1213',
+          name: 'sss羽绒服',
+          userType: '高级用户',
+          price: '699',
+          createTime: '2024-12-12',
+          paymentTime: '2024-12-13',
+          user: '女士',
+          couponId: '479729-1213',
+          couponType: '无门槛券'
+        },
+      ])
+      const filterTbData = ref([])
+      const editTBH = ref([
+        {prop: 'no',label: '排序'},
+        {prop: 'label',label: '字段名称'},
+        {prop: 'operate',label: '操作'},
+      ])
+      const userType = ref('')
+      function editTable(dra) {
+        draTitle.value = dra
+        isShowEditDl.value = true
+      }
+      function changeTb(index) {
+        curTableIndex.value = index
+      }
+      function delTb(index) {
+        isShow.value = false
+        if (tableH.value.length <= 1) {
+          ElementPlus.ElMessage('至少保留一个表格内容')
+          return
+        }
+        tableH.value.splice(index,1)
+        curTableIndex.value = 0
+      }
+      function operate(op,row,index) {
+        if (op === 'toggle'){
+          row.visible = !row.visible
+        }else{
+          let targetIndex = op === 1 ? index - 1 : index + 1;
+          [tableH.value[curTableIndex.value]['tb'][index], tableH.value[curTableIndex.value]['tb'][targetIndex]] = [tableH.value[curTableIndex.value]['tb'][targetIndex], tableH.value[curTableIndex.value]['tb'][index]];
+        }
+      }
+      function saveTb() {
+        ElementPlus.ElMessageBox.prompt('请输入表格方案名称', '提示', {
+          confirmButtonText: '确认保存',
+          cancelButtonText: '取消',
+          inputPlaceholder: '表格方案名称',
+          inputValidator: value => !!value,
+          inputErrorMessage: '名称不能为空',
+        })
+          .then(({ value }) => {
+            tableH.value.push({
+              id: Date.now(),
+              name: value,
+              tb: JSON.parse(JSON.stringify(tableH.value[curTableIndex.value]['tb']))
+            })
+            ElementPlus.ElMessage({
+              type: 'success',
+              message: `表格方案:${value}添加成功`,
+            })
+            isShowEditDl.value = false
+          })
+          .catch()
+      }
+      function search(key) {
+        if (key === 'rest') {
+          userType.value = ''
+          filterTbData.value = []
+        }else{
+          filterTbData.value = tableData.value.filter(v => v.userType === userType.value)
+          isShowEditDl.value = false
+        }
+      }
+      function searchVal() {
+        filterTbData.value = tableData.value.filter(v => v.name.includes(sc.value))
+      }
+      const computeTableH = computed(() => tableH.value[curTableIndex?.value]?.tb.filter((v,i) => i > 0))
+      const tbD = computed(() => filterTbData.value.length ? filterTbData.value : tableData.value)
+      const tbH = computed(() => tableH.value[curTableIndex.value] ? tableH.value[curTableIndex.value].tb :tableH.value[0].tb)
+      return {
+        sc,
+        tbH,
+        searchVal,
+        tableH,
+        isShowEditDl,
+        tableData,
+        curTableIndex,
+        editTable,
+        draTitle,
+        editTBH,
+        changeTb,
+        delTb,
+        operate,
+        computeTableH,
+        saveTb,
+        userType,
+        search,
+        tbD
+      }
+    },
+    components: {
+      'upload': ElementPlusIconsVue.Upload,
+      'download':ElementPlusIconsVue.Download,
+      'hide':ElementPlusIconsVue.Hide,
+    }
+  }).use(ElementPlus).mount('#app')
+</script>
+</body>
+</html>
